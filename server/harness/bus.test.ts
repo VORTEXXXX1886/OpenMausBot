@@ -256,7 +256,7 @@ describe("EventBus", () => {
     release();
     await bus.flush();
 
-    const events = writes.flatMap(({ data }) => data.trim().split("\\n").map((line) => JSON.parse(line) as { eventId: string }));
+    const events = writes.flatMap(({ data }) => data.trim().split("\n").map((line) => JSON.parse(line) as { eventId: string }));
     expect(events.map((event) => event.eventId)).toEqual([
       ...Array.from({ length: 160 }, (_, i) => `before-${i}`),
       ...Array.from({ length: 160 }, (_, i) => `after-${i}`),
