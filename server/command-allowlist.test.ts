@@ -116,7 +116,7 @@ describe("command allowlist", () => {
 
   it("rejects bidi formatting controls in saved command grants and never auto-matches them", () => {
     const store = new CommandAllowlistStore(filename);
-    for (const control of ["\\u202E", "\\u202A", "\\u2066", "\\u2069"]) {
+    for (const control of [0x202e, 0x202a, 0x2066, 0x2069].map((codepoint) => String.fromCodePoint(codepoint))) {
       for (const changed of [
         { command: `git status ${control}--short` },
         { cwd: `${directory}${control}` },
