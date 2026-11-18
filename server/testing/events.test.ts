@@ -21,30 +21,36 @@ function fakeAdapter() {
   };
 }
 
-const event = (type: string): RuntimeEvent => ({ type } as unknown as RuntimeEvent);
+const event = (type: "turn.started" | "turn.completed" | "session.exited"): RuntimeEvent => ({
+  eventId: `test-${type}`,
+  provider: "test",
+  threadId: "test-thread",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  ...(type === "turn.completed" ? { type, ok: true } : { type }),
+});
 
 describe("recordEvents", () => {
   it("records events in arrival order and resolves for an event emitted before until()", async () => {
     const source = fakeAdapter();
     const recorder = recordEvents(source.adapter);
-    const first = event("first");
-    const second = event("second");
+    const first = event("turn.started");
+    const second = event("turn.completed");
 
     source.emit(first);
     source.emit(second);
 
     expect(recorder.events).toEqual([first, second]);
-    expect(await recorder.until((item) => item.type === "first")).toBe(first);
+    expect(await recorder.until((item) => item.type === "turn.started")).toBe(first);
     recorder.stop();
   });
 
   it("resolves independent pending waiters only when their predicates match", async () => {
     const source = fakeAdapter();
     const recorder = recordEvents(source.adapter);
-    const firstWaiter = recorder.until((item) => item.type === "first");
-    const secondWaiter = recorder.until((item) => item.type === "second");
-    const first = event("first");
-    const second = event("second");
+    const firstWaiter = recorder.until((item) => item.type === "turn.started");
+    const secondWaiter = recorder.until((item) => item.type === "turn.completed");
+    const first = event("turn.started");
+    const second = event("turn.completed");
 
     source.emit(second);
     source.emit(first);
@@ -58,9 +64,9 @@ describe("recordEvents", () => {
   it("resolves every matching waiter from the same event", async () => {
     const source = fakeAdapter();
     const recorder = recordEvents(source.adapter);
-    const firstWaiter = recorder.until((item) => item.type === "shared");
-    const secondWaiter = recorder.until((item) => item.type === "shared");
-    const shared = event("shared");
+    const firstWaiter = recorder.until((item) => item.type === "session.exited");
+    const secondWaiter = recorder.until((item) => item.type === "session.exited");
+    const shared = event("session.exited");
 
     source.emit(shared);
 
@@ -73,12 +79,12 @@ describe("recordEvents", () => {
     const source = fakeAdapter();
     const recorder = recordEvents(source.adapter);
     expect(source.listenerCount()).toBe(1);
-    source.emit(event("before"));
+    source.emit(event("turn.started"));
 
     recorder.stop();
 
     expect(source.listenerCount()).toBe(0);
-    source.emit(event("after"));
-    expect(recorder.events.map((item) => item.type)).toEqual(["before"]);
+    source.emit(event("turn.completed"));
+    expect(recorder.events.map((item) => item.type)).toEqual(["turn.started"]);
   });
 });
