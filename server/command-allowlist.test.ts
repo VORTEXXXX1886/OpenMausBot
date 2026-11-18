@@ -114,6 +114,23 @@ describe("command allowlist", () => {
     expect(validateCommandAllowlistCandidate({ ...candidate(), command: "curl -H \"Authorization: Bearer $TOKEN\" https://example.test" }).command).toContain("$TOKEN");
   });
 
+  it("rejects bidi formatting controls in saved command grants and never auto-matches them", () => {
+    const store = new CommandAllowlistStore(filename);
+    for (const control of ["\\u202E", "\\u202A", "\\u2066", "\\u2069"]) {
+      for (const changed of [
+        { command: `git status ${control}--short` },
+        { cwd: `${directory}${control}` },
+        { providerInstanceId: `claude${control}` },
+      ]) {
+        const unsafe = { ...candidate(), ...changed };
+        expect(commandAllowlistCandidate(unsafe)).toBeNull();
+        expect(() => validateCommandAllowlistCandidate(unsafe)).toThrow();
+        expect(store.matches("bot-a", unsafe)).toBe(false);
+      }
+    }
+    expect(store.list("bot-a")).toEqual([]);
+  });
+
   it("fails closed for corrupt, malformed or unreadable stores without replacing them", () => {
     const store = new CommandAllowlistStore(filename);
     store.add("bot-a", candidate());
