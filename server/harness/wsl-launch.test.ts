@@ -31,7 +31,7 @@ describe("launchesThroughWsl", () => {
   it.each([
     "C:/Windows/Sysnative/bash.exe -lc hermes",
     "\"C:/Windows/System32/bash.exe\" -lc hermes",
-    "C:\\\\Windows\\\\System32\\\\BASH.EXE -c hermes",
+    "C:\\WINDOWS\\System32\\BASH.EXE -c hermes",
   ])("recognizes the Windows WSL bridge across path spellings: %s", (cli) => {
     expect(launchesThroughWsl(cli, "win32")).toBe(true);
   });
