@@ -28,6 +28,21 @@ describe("launchesThroughWsl", () => {
     expect(launchesThroughWsl(cli, "win32")).toBe(false);
   });
 
+  it.each([
+    "C:/Windows/Sysnative/bash.exe -lc hermes",
+    "\"C:/Windows/System32/bash.exe\" -lc hermes",
+    "C:\\\\Windows\\\\System32\\\\BASH.EXE -c hermes",
+  ])("recognizes the Windows WSL bridge across path spellings: %s", (cli) => {
+    expect(launchesThroughWsl(cli, "win32")).toBe(true);
+  });
+
+  it.each([
+    "\"C:/Program Files/Git/bin/bash.exe\" -lc hermes",
+    "C:/tools/bash.exe -c hermes",
+  ])("never confuses native Windows shells with WSL: %s", (cli) => {
+    expect(launchesThroughWsl(cli, "win32")).toBe(false);
+  });
+
   it.each(["linux", "darwin"] as const)("never counts anything on %s", (platform) => {
     expect(launchesThroughWsl("wsl hermes", platform)).toBe(false);
     expect(launchesThroughWsl("/usr/bin/wsl", platform)).toBe(false);
