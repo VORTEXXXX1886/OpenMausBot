@@ -4,7 +4,7 @@ import { errorTranscript } from "../../shared/client-cancel.ts";
 import type { ProviderInstance, RuntimeEvent, RuntimeEventListener } from "../contracts.ts";
 import { unaskedStopMessage, withUnaskedStops } from "./unasked-stop.ts";
 
-function engine() {
+function engine(options: { interrupt?: () => Promise<void>; stopAll?: () => Promise<void> } = {}) {
   const listeners = new Set<RuntimeEventListener>();
   const interrupted: string[] = [];
   const instance = {
@@ -13,10 +13,10 @@ function engine() {
       provider: "claude",
       capabilities: { sessionModelSwitch: "unsupported" as const },
       sendTurn: async () => ({ turnId: "turn-1" }),
-      interruptTurn: async (threadId: string) => { interrupted.push(threadId); },
+      interruptTurn: async (threadId: string) => { interrupted.push(threadId); await options.interrupt?.(); },
       respondToRequest: async () => "unavailable" as const,
       hasSession: () => false,
-      stopAll: async () => {},
+      stopAll: async () => { await options.stopAll?.(); },
       onEvent: (listener: RuntimeEventListener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     },
   } as unknown as ProviderInstance;
@@ -67,6 +67,40 @@ describe("an engine that ends a turn saying only that its request was aborted", 
     emit("t2", { type: "turn.started" });
     emit("t2", { type: "runtime.error", message: "provider returned a streaming completion error: The request was cancelled by the client." });
     expect(lastError()).toBe(unaskedStopMessage("The request was cancelled by the client."));
+  });
+
+  it("treats a cancellation error as unasked when the stop command failed", async () => {
+    const { decorated, emit, lastError } = engine({
+      interrupt: async () => { throw new Error("stop transport unavailable"); },
+    });
+    emit("t1", { type: "turn.started" });
+    await expect(decorated.adapter.interruptTurn("t1")).rejects.toThrow("stop transport unavailable");
+    emit("t1", { type: "runtime.error", message: "Request was aborted." });
+    expect(lastError()).toBe(unaskedStopMessage("Request was aborted."));
+  });
+
+  it("does not suppress unasked cancellations when stopAll failed", async () => {
+    const { decorated, emit, lastError } = engine({
+      stopAll: async () => { throw new Error("stop transport unavailable"); },
+    });
+    emit("t1", { type: "turn.started" });
+    await expect(decorated.adapter.stopAll()).rejects.toThrow("stop transport unavailable");
+    emit("t1", { type: "runtime.error", message: "context canceled" });
+    expect(lastError()).toBe(unaskedStopMessage("context canceled"));
+  });
+
+  it("preserves an earlier explicit stop even if a subsequent stopAll fails", async () => {
+    const { decorated, emit, lastError } = engine({
+      stopAll: async () => { throw new Error("stop transport unavailable"); },
+    });
+    emit("t1", { type: "turn.started" });
+    emit("t2", { type: "turn.started" });
+    await decorated.adapter.interruptTurn("t1");
+    await expect(decorated.adapter.stopAll()).rejects.toThrow("stop transport unavailable");
+    emit("t1", { type: "runtime.error", message: "context canceled" });
+    expect(lastError()).toBe("context canceled");
+    emit("t2", { type: "runtime.error", message: "context canceled" });
+    expect(lastError()).toBe(unaskedStopMessage("context canceled"));
   });
 
   it("leaves every other error as the engine wrote it", () => {
