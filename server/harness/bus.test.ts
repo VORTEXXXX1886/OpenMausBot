@@ -232,6 +232,38 @@ describe("EventBus", () => {
     expect(ids).toEqual(["a", "b", "c"]);
   });
 
+  it("drains successive batches and preserves per-thread order when publishing during an append", async () => {
+    let release!: () => void;
+    let first = true;
+    const writes: Array<{ path: string; data: string }> = [];
+    const bus = new EventBus((path, data) => {
+      if (first) {
+        first = false;
+        return new Promise<void>((resolve) => {
+          release = () => { writes.push({ path, data }); resolve(); };
+        });
+      }
+      writes.push({ path, data });
+    });
+
+    for (let i = 0; i < 160; i++) {
+      bus.publish(testEvent({ eventId: `before-${i}`, threadId: "batch-stream" }));
+    }
+    await Promise.resolve(); // First batch is now waiting on the writer.
+    for (let i = 0; i < 160; i++) {
+      bus.publish(testEvent({ eventId: `after-${i}`, threadId: "batch-stream" }));
+    }
+    release();
+    await bus.flush();
+
+    const events = writes.flatMap(({ data }) => data.trim().split("\\n").map((line) => JSON.parse(line) as { eventId: string }));
+    expect(events.map((event) => event.eventId)).toEqual([
+      ...Array.from({ length: 160 }, (_, i) => `before-${i}`),
+      ...Array.from({ length: 160 }, (_, i) => `after-${i}`),
+    ]);
+    expect(writes.length).toBeGreaterThan(1);
+  });
+
   it("stops queueing once the log buffer is full and warns once", async () => {
     const writes: string[] = [];
     const append = vi.fn((_path: string, data: string) => {
