@@ -10,6 +10,8 @@ const MAX_COMMAND_BYTES = 16_384;
 const MAX_CWD_BYTES = 4_096;
 const MAX_RULES_PER_BOT = 200;
 const MAX_STORE_BYTES = 8 * 1024 * 1024;
+// Bidirectional formatting controls can disguise the command, working directory or provider shown for a saved grant.
+const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/u;
 const BOT_ID = /^[\w-]{1,128}$/;
 const RULE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -24,14 +26,14 @@ export function validateCommandAllowlistCandidate(value: unknown): CommandAllowl
   if (!record(value)) throw invalid("A command, absolute working directory and engine instance are required.");
   const { command, cwd, providerInstanceId } = value;
   if (typeof command !== "string" || !command.trim() || Buffer.byteLength(command) > MAX_COMMAND_BYTES ||
-    /[\p{Cc}\p{Cs}]/u.test(command.replace(/[\t\r\n]/g, ""))) {
+    (/[\p{Cc}\p{Cs}]/u.test(command.replace(/[\t\r\n]/g, "")) || BIDI_CONTROLS.test(command)) {
     throw invalid("The command must be nonempty text of at most 16384 bytes, without invalid control characters.");
   }
   if (redactSecretsInText(command) !== command) {
     throw invalid("Commands containing credentials cannot be saved. Use an environment variable instead.");
   }
   if (typeof cwd !== "string" || !cwd || Buffer.byteLength(cwd) > MAX_CWD_BYTES ||
-    /[\p{Cc}\p{Cs}]/u.test(cwd) || !isAbsolute(cwd) || cwd.split(sep === "\\" ? /[\\/]/ : /\//).includes("..")) {
+    (/[\p{Cc}\p{Cs}]/u.test(cwd) || BIDI_CONTROLS.test(cwd)) || !isAbsolute(cwd || cwd.split(sep === "\\" ? /[\\/]/ : /\//).includes("..")) {
     throw invalid("The working directory must be an absolute path without parent-directory segments.");
   }
   // On Windows, `\work` is rooted but still depends on the current drive.
@@ -39,7 +41,7 @@ export function validateCommandAllowlistCandidate(value: unknown): CommandAllowl
     throw invalid("The working directory must include its drive or network share.");
   }
   if (typeof providerInstanceId !== "string" || !providerInstanceId || providerInstanceId.trim() !== providerInstanceId ||
-    providerInstanceId.length > 200 || /[\p{Cc}\p{Cs}]/u.test(providerInstanceId)) {
+    providerInstanceId.length > 200 || (/[\p{Cc}\p{Cs}]/u.test(providerInstanceId) || BIDI_CONTROLS.test(providerInstanceId))) {
     throw invalid("A valid engine instance is required.");
   }
   // Keep directory spelling exact too. A false negative is preferable to
