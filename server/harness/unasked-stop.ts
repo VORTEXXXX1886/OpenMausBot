@@ -34,12 +34,14 @@ export function withUnaskedStops(instance: ProviderInstance): ProviderInstance {
     ...adapter,
     onEvent: (listener) => adapter.onEvent((item) => listener(shown(item))),
     interruptTurn: async (threadId, turnId) => {
+      const previouslyAsked = asked.has(threadId);
       asked.add(threadId);
       try {
         await adapter.interruptTurn(threadId, turnId);
       } catch (error) {
-        // A failed stop request is not evidence that the person stopped the turn.
-        asked.delete(threadId);
+        // A failed request cannot create a new user-stop acknowledgement.
+        // Retain an earlier successful request for the same turn.
+        if (!previouslyAsked) asked.delete(threadId);
         throw error;
       }
     },
