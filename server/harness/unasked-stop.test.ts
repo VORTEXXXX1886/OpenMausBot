@@ -118,6 +118,16 @@ describe("an engine that ends a turn saying only that its request was aborted", 
     expect(lastError()).toBe(unaskedStopMessage("context canceled"));
   });
 
+  it("does not carry an old stop into a new turn on the same thread", async () => {
+    const { decorated, emit, lastError } = engine();
+    emit("t1", { type: "turn.started" });
+    await decorated.adapter.interruptTurn("t1");
+    // A fresh turn can begin after reconnection, without an old completion event.
+    emit("t1", { type: "turn.started" });
+    emit("t1", { type: "runtime.error", message: "context canceled" });
+    expect(lastError()).toBe(unaskedStopMessage("context canceled"));
+  });
+
   it("leaves every other error as the engine wrote it", () => {
     const { emit, lastError } = engine();
     emit("t1", { type: "turn.started" });
