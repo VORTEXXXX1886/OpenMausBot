@@ -79,6 +79,21 @@ describe("an engine that ends a turn saying only that its request was aborted", 
     expect(lastError()).toBe(unaskedStopMessage("Request was aborted."));
   });
 
+  it("keeps the first successful stop when a duplicate stop command fails", async () => {
+    let calls = 0;
+    const { decorated, emit, lastError } = engine({
+      interrupt: async () => {
+        calls++;
+        if (calls === 2) throw new Error("stop transport unavailable");
+      },
+    });
+    emit("t1", { type: "turn.started" });
+    await decorated.adapter.interruptTurn("t1");
+    await expect(decorated.adapter.interruptTurn("t1")).rejects.toThrow("stop transport unavailable");
+    emit("t1", { type: "runtime.error", message: "context canceled" });
+    expect(lastError()).toBe("context canceled");
+  });
+
   it("does not suppress unasked cancellations when stopAll failed", async () => {
     const { decorated, emit, lastError } = engine({
       stopAll: async () => { throw new Error("stop transport unavailable"); },
