@@ -21,7 +21,7 @@ function fakeAdapter() {
   };
 }
 
-const event = (type: string): RuntimeEvent => ({ type } as RuntimeEvent);
+const event = (type: string): RuntimeEvent => ({ type } as unknown as RuntimeEvent);
 
 describe("recordEvents", () => {
   it("records events in arrival order and resolves for an event emitted before until()", async () => {
