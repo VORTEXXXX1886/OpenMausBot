@@ -11,7 +11,7 @@ const MAX_CWD_BYTES = 4_096;
 const MAX_RULES_PER_BOT = 200;
 const MAX_STORE_BYTES = 8 * 1024 * 1024;
 // Reject invisible bidi-formatting controls that can visually disguise saved grant scopes.
-const BIDI_CONTROLS = /[\u202A-\u202E\u2066-\u2069]/u;
+const BIDI_CONTROLS = /[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 const BOT_ID = /^[\w-]{1,128}$/;
 const RULE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
