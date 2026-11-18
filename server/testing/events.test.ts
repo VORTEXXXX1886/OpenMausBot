@@ -55,6 +55,20 @@ describe("recordEvents", () => {
     recorder.stop();
   });
 
+  it("resolves every matching waiter from the same event", async () => {
+    const source = fakeAdapter();
+    const recorder = recordEvents(source.adapter);
+    const firstWaiter = recorder.until((item) => item.type === "shared");
+    const secondWaiter = recorder.until((item) => item.type === "shared");
+    const shared = event("shared");
+
+    source.emit(shared);
+
+    expect(await firstWaiter).toBe(shared);
+    expect(await secondWaiter).toBe(shared);
+    recorder.stop();
+  });
+
   it("unsubscribes on stop so later events are not recorded", () => {
     const source = fakeAdapter();
     const recorder = recordEvents(source.adapter);
