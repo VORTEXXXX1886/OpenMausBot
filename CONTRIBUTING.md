@@ -28,7 +28,7 @@ pnpm install
 
 pnpm dev:server    # harness server → 127.0.0.1:8799
 pnpm dev           # app → http://127.0.0.1:5199
-pnpm dev:desktop   # Electron shell (macOS/Ubuntu; keep server + Vite running)
+pnpm dev:desktop   # Electron shell; keep server + Vite running in other terminals
 
 pnpm typecheck     # app + server
 pnpm test          # vitest suite (server unit + driver contract + API smoke)
@@ -38,6 +38,32 @@ pnpm check:electron # syntax-check the plain JS Electron entrypoints
 pnpm package:mac   # DMG + ZIP; requires Swift/Xcode tools
 pnpm package:linux # Ubuntu x64 .deb + AppImage; no Swift required
 ```
+
+### Windows source-development troubleshooting
+
+Run the three development processes in **separate terminals**, from the repository root,
+in this order:
+
+1. `pnpm dev:server` — harness API on `127.0.0.1:8799`.
+2. `pnpm dev` — Vite app on `http://127.0.0.1:5199`.
+3. `pnpm dev:desktop` — Electron shell, after the first two processes are ready.
+
+Keep all three terminals open. If Electron shows `ERR_CONNECTION_REFUSED` for
+`http://127.0.0.1:5199` or opens a blank window, first check whether the Vite
+terminal is still running and which URL it printed. In PowerShell, you can
+check whether each local port has a listener without changing any settings:
+
+```powershell
+Test-NetConnection 127.0.0.1 -Port 5199
+Test-NetConnection 127.0.0.1 -Port 8799
+```
+
+If `TcpTestSucceeded` is `False`, inspect the corresponding terminal's output
+for a startup error. If Vite printed a different port, use that output when
+diagnosing the mismatch rather than assuming the Electron shell can reach
+`5199`. These checks diagnose the dev setup; they do not require disabling
+Windows Defender or opening the servers to the local network. The packaged
+Windows installer is a separate path from this from-source workflow.
 
 To reproduce a failing CI test job, follow [Vitest shards](docs/ci.md#vitest-shards).
 Use the job's checkout revision, OS, file filters, shard fraction, and
