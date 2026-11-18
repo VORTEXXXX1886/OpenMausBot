@@ -51,6 +51,14 @@ describe("dropdowns", () => {
     expect(raw.map(({ at }) => at)).toEqual([]);
   });
 
+  it("uses logical positioning in the shared Select for RTL layouts", () => {
+    const select = readFileSync(join(src, "components", "Select.tsx"), "utf8");
+    expect(select).toContain('chevron: "end-');
+    expect(select).toContain("ps-2.5 pe-");
+    expect(select).not.toMatch(/chevron:\\s*"right-/);
+    expect(select).not.toMatch(/\\b(?:pl|pr)-[\\w.[\\]-]+/);
+  });
+
   it("are positioned by their call site, never restyled", () => {
     const restyled = tags.filter(({ native, text }) => {
       if (native) return false;
