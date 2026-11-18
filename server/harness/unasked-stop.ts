@@ -21,7 +21,11 @@ export function withUnaskedStops(instance: ProviderInstance): ProviderInstance {
   const running = new Set<string>();
   const asked = new Set<string>();
   const shown = (item: RuntimeEvent): RuntimeEvent => {
-    if (item.type === "turn.started") running.add(item.threadId);
+    if (item.type === "turn.started") {
+      // A new turn on the same thread must not inherit the previous turn's stop request.
+      asked.delete(item.threadId);
+      running.add(item.threadId);
+    }
     if (item.type === "turn.completed") {
       running.delete(item.threadId);
       asked.delete(item.threadId);
