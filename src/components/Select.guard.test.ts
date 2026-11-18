@@ -55,8 +55,9 @@ describe("dropdowns", () => {
     const select = readFileSync(join(src, "components", "Select.tsx"), "utf8");
     expect(select).toContain('chevron: "end-');
     expect(select).toContain("ps-2.5 pe-");
-    expect(select).not.toMatch(/chevron:\\s*"right-/);
-    expect(select).not.toMatch(/\\b(?:pl|pr)-[\\w.[\\]-]+/);
+    expect(select).not.toContain('chevron: "right-');
+    expect(select).not.toContain("pl-");
+    expect(select).not.toContain("pr-");
   });
 
   it("are positioned by their call site, never restyled", () => {
