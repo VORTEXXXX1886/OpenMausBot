@@ -60,6 +60,14 @@ describe("dropdowns", () => {
     expect(select).not.toContain("pr-");
   });
 
+  it("keeps a visible keyboard focus ring across shared dropdown variants", () => {
+    const source = readFileSync(join(src, "components", "Select.tsx"), "utf8");
+    for (const variant of ["field", "pill", "ghost", "quiet"]) {
+      const line = source.split("\n").find((part) => part.trimStart().startsWith(`${variant}: `));
+      expect(line, variant).toContain("focus-visible:ring-focus");
+    }
+  });
+
   it("are positioned by their call site, never restyled", () => {
     const restyled = tags.filter(({ native, text }) => {
       if (native) return false;
