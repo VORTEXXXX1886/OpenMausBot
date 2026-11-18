@@ -33,13 +33,26 @@ export function withUnaskedStops(instance: ProviderInstance): ProviderInstance {
   (instance as { adapter: ProviderInstance["adapter"] }).adapter = {
     ...adapter,
     onEvent: (listener) => adapter.onEvent((item) => listener(shown(item))),
-    interruptTurn: (threadId, turnId) => {
+    interruptTurn: async (threadId, turnId) => {
       asked.add(threadId);
-      return adapter.interruptTurn(threadId, turnId);
+      try {
+        await adapter.interruptTurn(threadId, turnId);
+      } catch (error) {
+        // A failed stop request is not evidence that the person stopped the turn.
+        asked.delete(threadId);
+        throw error;
+      }
     },
-    stopAll: () => {
+    stopAll: async () => {
+      const previouslyAsked = new Set(asked);
       for (const threadId of running) asked.add(threadId);
-      return adapter.stopAll();
+      try {
+        await adapter.stopAll();
+      } catch (error) {
+        // Keep earlier explicit stops, but do not label newly affected turns as stopped.
+        for (const threadId of running) if (!previouslyAsked.has(threadId)) asked.delete(threadId);
+        throw error;
+      }
     },
   };
   return instance;
