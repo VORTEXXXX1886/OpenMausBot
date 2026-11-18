@@ -21,13 +21,19 @@ function fakeAdapter() {
   };
 }
 
-const event = (type: "turn.started" | "turn.completed" | "session.exited"): RuntimeEvent => ({
-  eventId: `test-${type}`,
-  provider: "test",
-  threadId: "test-thread",
-  createdAt: "2026-01-01T00:00:00.000Z",
-  ...(type === "turn.completed" ? { type, ok: true } : { type }),
-});
+const event = (type: "turn.started" | "turn.completed" | "session.exited"): RuntimeEvent => {
+  const base = {
+    eventId: `test-${type}`,
+    provider: "test",
+    threadId: "test-thread",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+  switch (type) {
+    case "turn.started": return { ...base, type };
+    case "turn.completed": return { ...base, type, ok: true };
+    case "session.exited": return { ...base, type };
+  }
+};
 
 describe("recordEvents", () => {
   it("records events in arrival order and resolves for an event emitted before until()", async () => {
