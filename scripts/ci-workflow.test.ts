@@ -49,6 +49,19 @@ describe("CI concurrency", () => {
     );
   });
 
+  it("uses the supported Node 24 runtime and pnpm before preflight checks", () => {
+    const steps = workflow.jobs.static.steps as Array<{ uses?: string; with?: Record<string, unknown>; run?: string }>;
+    const node = steps.find((step) => step.uses?.startsWith("actions/setup-node@"));
+    const pnpm = steps.find((step) => step.uses?.startsWith("pnpm/action-setup@"));
+    const install = steps.find((step) => step.run === "pnpm install --frozen-lockfile");
+
+    expect(node?.with?.["node-version"]).toBe(24);
+    expect(pnpm).toBeDefined();
+    expect(install).toBeDefined();
+    expect(steps.indexOf(pnpm!)).toBeLessThan(steps.indexOf(node!));
+    expect(steps.indexOf(node!)).toBeLessThan(steps.indexOf(install!));
+  });
+
   it("validates the model manifest before anything lands on main", () => {
     const step = workflow.jobs.static.steps.find((candidate: { name?: string }) => candidate.name === "Validate the model manifest");
     expect(step.run).toContain("scripts/check-model-manifest.mjs");

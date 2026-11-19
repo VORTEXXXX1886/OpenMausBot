@@ -51,6 +51,23 @@ describe("dropdowns", () => {
     expect(raw.map(({ at }) => at)).toEqual([]);
   });
 
+  it("uses logical positioning in the shared Select for RTL layouts", () => {
+    const select = readFileSync(join(src, "components", "Select.tsx"), "utf8");
+    expect(select).toContain('chevron: "end-');
+    expect(select).toContain("ps-2.5 pe-");
+    expect(select).not.toContain('chevron: "right-');
+    expect(select).not.toContain("pl-");
+    expect(select).not.toContain("pr-");
+  });
+
+  it("keeps a visible keyboard focus ring across shared dropdown variants", () => {
+    const source = readFileSync(join(src, "components", "Select.tsx"), "utf8");
+    for (const variant of ["field", "pill", "ghost", "quiet"]) {
+      const line = source.split("\n").find((part) => part.trimStart().startsWith(`${variant}: `));
+      expect(line, variant).toContain("focus-visible:ring-focus");
+    }
+  });
+
   it("are positioned by their call site, never restyled", () => {
     const restyled = tags.filter(({ native, text }) => {
       if (native) return false;
