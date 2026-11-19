@@ -81,7 +81,11 @@ async function restart(grants: Grants) {
   closeSync(log);
   await vi.waitFor(async () => {
     if (child!.exitCode !== null || child!.signalCode !== null) {
-      throw new Error(`Owned hosted-model fixture exited; see ${owned.info.logPath}`);
+      const startupLog = (() => {
+        try { return readFileSync(owned.info.logPath, "utf8").slice(-3_000).replaceAll(TOKEN, "[redacted]"); }
+        catch { return "(fixture log unavailable)"; }
+      })();
+      throw new Error(`Owned hosted-model fixture exited with code ${child!.exitCode}, signal ${child!.signalCode}:\\n${startupLog}`);
     }
     const response = await fetch(`${owned.info.url}/api/health`, { signal: AbortSignal.timeout(1_000) });
     expect(response.status).toBe(200);
