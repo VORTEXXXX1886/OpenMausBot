@@ -129,7 +129,11 @@ export default function Page() { const theme = useTheme(); return <div><p id="th
     expect(loads).toContain("echarts");
     expect(rendered.querySelector("#theme")?.textContent).toBe("dark");
     expect(rendered.querySelector("[role=img]")?.getAttribute("aria-label")).toBe("Sales");
-    expect(fakeEcharts.made[0]).toMatchObject({ theme: "dark", options: [{ backgroundColor: "transparent", series: [{ type: "bar", data: [1, 2] }] }] });
+    // React schedules the Chart's useEffect after rendering; CI may not flush
+    // ECharts initialization inside the fixed 30ms mount settle window.
+    await vi.waitFor(() => {
+      expect(fakeEcharts.made[0]).toMatchObject({ theme: "dark", options: [{ backgroundColor: "transparent", series: [{ type: "bar", data: [1, 2] }] }] });
+    }, { timeout: 3_000 });
   });
 
   it("runs a published page's transpiled code without loading the compiler", async () => {
