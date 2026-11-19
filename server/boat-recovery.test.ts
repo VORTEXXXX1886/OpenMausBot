@@ -21,6 +21,8 @@ let server: Server;
 let boxes: Box[] = [];
 let requests: Seen[] = [];
 let commandStatus = new Map<string, number>();
+let holdCommands = false;
+let pendingCommandReplies: Array<() => void> = [];
 let boxReadStatus = new Map<string, number>();
 let listStatus = 200;
 let deleteCompletes = true;
@@ -100,8 +102,10 @@ beforeAll(async () => {
       if (action === "commands") {
         const status = commandStatus.get(box.id) ?? 200;
         // The relay's answer when Boat's gateway cannot reach the machine.
-        return status === 200 ? send(res, 200, { exitCode: 0, stdout: "captured", stderr: "" })
+        const reply = () => status === 200 ? send(res, 200, { exitCode: 0, stdout: "captured", stderr: "" })
           : send(res, status, { ok: false, code: "upstream_unavailable", message: "Cloud computers could not be reached. Try again in a minute." });
+        if (holdCommands) { pendingCommandReplies.push(reply); return; }
+        return reply();
       }
       if (action === "desktop") return send(res, 200, { desktopUrl: "https://desktop.test/view" });
       return send(res, 404, { ok: false });
@@ -149,7 +153,7 @@ function start() {
 }
 
 beforeEach(async () => {
-  boxes = []; requests = []; commandStatus = new Map(); boxReadStatus = new Map(); listStatus = 200; deleteCompletes = true; resumeAnswers = new Set();
+  boxes = []; requests = []; commandStatus = new Map(); holdCommands = false; pendingCommandReplies = []; boxReadStatus = new Map(); listStatus = 200; deleteCompletes = true; resumeAnswers = new Set();
   pendingDeletes.clear();
   deleteDelayMs = 0; autoOn = true; deleteSpans.length = 0; teamOwners.clear(); watched.clear(); stopRefused = new Set(); deletesAllowed = false;
   at += 24 * 60 * 60_000;
@@ -483,6 +487,25 @@ describe("a cloud computer that says it is ready but does not answer", () => {
     await until(() => recovery.verdict(first.botId) !== null && recovery.verdict(second.botId) !== null);
     expect(stops()).toHaveLength(1);
     expect([recovery.verdict(first.botId), recovery.verdict(second.botId)].sort()).toEqual(["restart-failed", "restart-limited"]);
+  });
+
+  it("never issues a new stop after shutdown while a failed command probe was pending", async () => {
+    const { botId, box } = await botWith("ready");
+    commandStatus.set(box.id, 502);
+    await boat.findBoat(cfg, botId);
+    holdCommands = true;
+    try {
+      stopsAnswering(box.id);
+      await until(() => pendingCommandReplies.length > 0);
+    } finally {
+      // Close the recovery while the provider request is still unanswered.
+      recovery.close();
+      holdCommands = false;
+      for (const reply of pendingCommandReplies.splice(0)) reply();
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(stops()).toHaveLength(0);
+    expect(deletes()).toHaveLength(0);
   });
 
   it("is set aside only once the provider's error is seen twice half an hour apart, and without a restart", async () => {
