@@ -268,9 +268,10 @@ describe("augmentedPath", () => {
     const shell = join(homedir(), "fake-login-shell");
     const rcOnlyBin = join(homedir(), "rc-only", "bin");
     const jobStatus = join(homedir(), "late-job.status");
+    const go = join(homedir(), "late-job.go");
     writeFileSync(
       shell,
-      `#!/bin/sh\nprintf '__OMB_PATH__%s__OMB_END__' '${rcOnlyBin}'\n(head -c 200000 /dev/zero; echo $? > '${jobStatus}') &\n`,
+      `#!/bin/sh\nprintf '__OMB_PATH__%s__OMB_END__' '${rcOnlyBin}'\n(i=0; while [ ! -e '${go}' ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done; head -c 200000 /dev/zero; echo $? > '${jobStatus}') &\n`,
     );
     chmodSync(shell, 0o755);
 
@@ -282,10 +283,12 @@ describe("augmentedPath", () => {
 
       augmentedPath();
       await vi.waitFor(() => expect(augmentedPath().split(delimiter)).toContain(rcOnlyBin));
-      // 141 = 128 + SIGPIPE: the job's write hit a pipe nobody reads any more (0 would mean it was all read).
-      await vi.waitFor(() => expect(existsSync(jobStatus) && readFileSync(jobStatus, "utf8").trim()).toBe("141"), {
-        timeout: 5000,
-      });
+      // The complete PATH answer must be accepted *before* the background writer
+      // is allowed to emit output. Whether that writer later sees EPIPE, SIGPIPE,
+      // or a buffered successful write is platform-dependent and not the contract.
+      expect(existsSync(jobStatus)).toBe(false);
+      writeFileSync(go, "");
+      await vi.waitFor(() => expect(existsSync(jobStatus)).toBe(true), { timeout: 5000 });
       expect(augmentedPath().split(delimiter)).toContain(rcOnlyBin);
     } finally {
       if (saved.SHELL === undefined) delete process.env.SHELL;

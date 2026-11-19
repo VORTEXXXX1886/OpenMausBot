@@ -48,6 +48,22 @@ describe("a cloud computer goes to sleep after use and wakes on the next", () =>
     expect(result.status, `${method} ${path}: ${JSON.stringify(result.body)}`).toBeLessThan(400);
     return result.body;
   };
+  // An idle-stop can already own the computer when a team assigns it. A 409
+  // specifically saying it is being changed is temporary, not a rejected grant.
+  // Retry only that response, within a bound; any other failure remains visible.
+  const assignTeamWhenSettled = async (requestId: string, section: string) => {
+    const path = `/api/team-computers/${requestId}`;
+    const end = Date.now() + 15_000;
+    for (;;) {
+      const result = await api("PATCH", path, { section, acknowledgeSharedAccess: true });
+      if (result.status < 400) return result.body;
+      if (result.status !== 409 || !String(result.body?.error ?? "").includes("cloud computer is being changed") || Date.now() >= end) {
+        expect(result.status, `PATCH ${path}: ${JSON.stringify(result.body)}`).toBeLessThan(400);
+        return result.body;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  };
   async function until<T>(read: () => T | Promise<T>, accept: (value: T) => boolean, ms = 30_000): Promise<T> {
     const end = Date.now() + ms;
     for (;;) {
@@ -271,7 +287,7 @@ describe("a cloud computer goes to sleep after use and wakes on the next", () =>
     teamBox = rows.at(-1)!.id;
     ada = await newBot("Ada", { ...model("uses"), section: "Ops" });
     ben = await newBot("Ben", { ...model("slow"), section: "Ops", computer: "off" });
-    await apiOk("PATCH", `/api/team-computers/${requestId}`, { section: "Ops", acknowledgeSharedAccess: true });
+    await assignTeamWhenSettled(requestId, "Ops");
 
     rmSync(gate, { force: true });
     await send(ben.id, "Draft the quarterly plan");
