@@ -19,18 +19,28 @@ export function unaskedStopMessage(said: string): string {
 export function withUnaskedStops(instance: ProviderInstance): ProviderInstance {
   const adapter = instance.adapter;
   const running = new Set<string>();
-  const asked = new Set<string>();
+  // Each turn owns its own stop state: an old asynchronous stop cannot affect a later turn.
+  type StopState = { pending: number; confirmed: boolean };
+  const stops = new Map<string, StopState>();
+  const stopState = (threadId: string): StopState => {
+    let state = stops.get(threadId);
+    if (!state) {
+      state = { pending: 0, confirmed: false };
+      stops.set(threadId, state);
+    }
+    return state;
+  };
   const shown = (item: RuntimeEvent): RuntimeEvent => {
     if (item.type === "turn.started") {
-      // A new turn on the same thread must not inherit the previous turn's stop request.
-      asked.delete(item.threadId);
+      stops.set(item.threadId, { pending: 0, confirmed: false });
       running.add(item.threadId);
     }
     if (item.type === "turn.completed") {
       running.delete(item.threadId);
-      asked.delete(item.threadId);
+      stops.delete(item.threadId);
     }
-    if (item.type !== "runtime.error" || asked.has(item.threadId)) return item;
+    const state = stops.get(item.threadId);
+    if (item.type !== "runtime.error" || (state && (state.pending > 0 || state.confirmed))) return item;
     const said = clientCancellation(item.message);
     return said === null ? item : { ...item, ...unaskedStopFailure(said) };
   };
@@ -38,26 +48,25 @@ export function withUnaskedStops(instance: ProviderInstance): ProviderInstance {
     ...adapter,
     onEvent: (listener) => adapter.onEvent((item) => listener(shown(item))),
     interruptTurn: async (threadId, turnId) => {
-      const previouslyAsked = asked.has(threadId);
-      asked.add(threadId);
+      const state = stopState(threadId);
+      state.pending++;
       try {
         await adapter.interruptTurn(threadId, turnId);
-      } catch (error) {
-        // A failed request cannot create a new user-stop acknowledgement.
-        // Retain an earlier successful request for the same turn.
-        if (!previouslyAsked) asked.delete(threadId);
-        throw error;
+        state.confirmed = true;
+      } finally {
+        // Failed requests leave no mark unless another request succeeded or is still pending.
+        state.pending--;
       }
     },
     stopAll: async () => {
-      const previouslyAsked = new Set(asked);
-      for (const threadId of running) asked.add(threadId);
+      // Snapshot the turns before awaiting: new turns must never inherit a prior stop.
+      const targets = [...running].map((threadId) => stopState(threadId));
+      for (const state of targets) state.pending++;
       try {
         await adapter.stopAll();
-      } catch (error) {
-        // Keep earlier explicit stops, but do not label newly affected turns as stopped.
-        for (const threadId of running) if (!previouslyAsked.has(threadId)) asked.delete(threadId);
-        throw error;
+        for (const state of targets) state.confirmed = true;
+      } finally {
+        for (const state of targets) state.pending--;
       }
     },
   };

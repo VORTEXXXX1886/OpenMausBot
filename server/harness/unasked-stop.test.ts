@@ -118,6 +118,43 @@ describe("an engine that ends a turn saying only that its request was aborted", 
     expect(lastError()).toBe(unaskedStopMessage("context canceled"));
   });
 
+  it("keeps a concurrent successful stop when an earlier stop request rejects later", async () => {
+    let failFirst!: (error: Error) => void;
+    let calls = 0;
+    const { decorated, emit, lastError } = engine({
+      interrupt: () => {
+        calls++;
+        if (calls === 1) return new Promise<void>((_resolve, reject) => { failFirst = reject; });
+        return Promise.resolve();
+      },
+    });
+    emit("t1", { type: "turn.started" });
+    const first = decorated.adapter.interruptTurn("t1");
+    await decorated.adapter.interruptTurn("t1");
+    failFirst(new Error("first transport failed"));
+    await expect(first).rejects.toThrow("first transport failed");
+
+    emit("t1", { type: "runtime.error", message: "context canceled" });
+    expect(lastError()).toBe("context canceled");
+  });
+
+  it("does not erase the stop of a new turn when an old stopAll rejects", async () => {
+    let failOldStop!: (error: Error) => void;
+    const { decorated, emit, lastError } = engine({
+      stopAll: () => new Promise<void>((_resolve, reject) => { failOldStop = reject; }),
+    });
+    emit("t1", { type: "turn.started" });
+    const oldStop = decorated.adapter.stopAll();
+    // The old turn disappeared without a completion event; the next starts on the same thread.
+    emit("t1", { type: "turn.started" });
+    await decorated.adapter.interruptTurn("t1");
+    failOldStop(new Error("old stop transport failed"));
+    await expect(oldStop).rejects.toThrow("old stop transport failed");
+
+    emit("t1", { type: "runtime.error", message: "context canceled" });
+    expect(lastError()).toBe("context canceled");
+  });
+
   it("does not carry an old stop into a new turn on the same thread", async () => {
     const { decorated, emit, lastError } = engine();
     emit("t1", { type: "turn.started" });
