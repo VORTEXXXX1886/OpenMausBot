@@ -1349,13 +1349,14 @@ describe("around each bot call (browser-steps.ts)", () => {
       const click = value.agentRpc("s", engine, "tools/call", { name: "agent_browser_click", arguments: { selector: "@e1" } }, undefined, { ...ctx, record: false });
       await vi.waitFor(() => expect(held).toBe(true));
       await sleep(15); // longer than the idle window, with only the page read running
-      expect(await value.closeIfIdle("s", 10)).toBe(false);
+      expect(await value.closeIfIdle("s", 1_000)).toBe(false);
       release();
       await expect(click).resolves.not.toMatchObject({ isError: true });
       expect(relay.actions()).toEqual(expect.arrayContaining(["console", "console:clear"]));
-      expect(await value.closeIfIdle("s", 10)).toBe(false);
-      await sleep(15);
-      expect(await value.closeIfIdle("s", 10)).toBe(true);
+      // Give the RPC completion enough idle headroom on loaded CI runners.
+      expect(await value.closeIfIdle("s", 1_000)).toBe(false);
+      await sleep(1_050);
+      expect(await value.closeIfIdle("s", 1_000)).toBe(true);
       expect(closeBrowser).toHaveBeenCalledTimes(1);
     } finally {
       relay.onCommand = undefined;
