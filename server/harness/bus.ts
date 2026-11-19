@@ -227,19 +227,21 @@ export class EventBus {
   }
 
   private async drain(): Promise<void> {
-    if (this.queued.length === 0) return;
-    const batch = this.queued.splice(0, MAX_BATCH_LINES);
-    let bytes = 0;
-    for (const item of batch) bytes += item.bytes;
-    this.queuedBytes -= bytes;
-    const groups: { threadId: string; items: QueuedLog[] }[] = [];
-    for (const item of batch) {
-      const last = groups.at(-1);
-      if (last && last.threadId === item.event.threadId) last.items.push(item);
-      else groups.push({ threadId: item.event.threadId, items: [item] });
+    // An iterative pump avoids nesting a promise/stack frame for every batch
+    // when many events arrive faster than the log writer can append them.
+    while (this.queued.length > 0) {
+      const batch = this.queued.splice(0, MAX_BATCH_LINES);
+      let bytes = 0;
+      for (const item of batch) bytes += item.bytes;
+      this.queuedBytes -= bytes;
+      const groups: { threadId: string; items: QueuedLog[] }[] = [];
+      for (const item of batch) {
+        const last = groups.at(-1);
+        if (last && last.threadId === item.event.threadId) last.items.push(item);
+        else groups.push({ threadId: item.event.threadId, items: [item] });
+      }
+      for (const group of groups) await this.appendGroup(group.threadId, group.items);
     }
-    for (const group of groups) await this.appendGroup(group.threadId, group.items);
-    if (this.queued.length > 0) await this.drain();
   }
 
   private async appendGroup(threadId: string, items: QueuedLog[]): Promise<void> {
