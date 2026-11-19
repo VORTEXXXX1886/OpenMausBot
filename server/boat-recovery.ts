@@ -254,6 +254,8 @@ export function createBoatRecovery(deps: BoatRecoveryDeps) {
   /** `no-answer`: it woke, and its wait for an answer ran out, the only restart that did not help. `not-ready`: the
    * provider did not report it ready again in time, which says nothing about the machine. */
   async function restart(owner: string, boxId: string, manual = false): Promise<"answers" | "no-answer" | "not-ready" | "refused"> {
+    // A recovery already in flight must not stop a computer after shutdown.
+    if (closed) return "refused";
     const cfg = deps.cfg();
     set(owner, boxId, "restarting", manual);
     restarts.set(boxId, now());
@@ -392,6 +394,8 @@ export function createBoatRecovery(deps: BoatRecoveryDeps) {
    * provider reports it broken; one that cannot even be stopped is deleted instead, as before. The caller checked the
    * other guards. Never sends a DELETE for a computer that could be stopped. */
   async function setAside(owner: string, target: Dead, opts: { dead?: boolean; onReplacing?: () => void } = {}): Promise<SetAsideResult> {
+    // Shutdown cancels background work that was awaiting a provider read.
+    if (closed) return "held";
     const cfg = deps.cfg();
     if (unreadable) { needsPerson(owner, target.boxId); return "held"; }
     const limit = limited(owner, target.boxId);
@@ -488,9 +492,11 @@ export function createBoatRecovery(deps: BoatRecoveryDeps) {
   }
 
   async function notResponding(owner: string, boxId: string): Promise<void> {
+    if (closed) return;
     const cfg = deps.cfg();
     set(owner, boxId, "not-responding");
     const seen = await boat.inspectBoatIdentity(cfg, boxId);
+    if (closed) return;
     if (!seen.available) return unreachable(owner, boxId);
     if (!seen.identity || !(await boat.boatNameMatchesBot(owner, seen.identity.name))) return clear(owner, boxId);
     if (seen.identity.state === "error") return void await dead(owner, seen.identity);
@@ -512,8 +518,10 @@ export function createBoatRecovery(deps: BoatRecoveryDeps) {
     if (deps.turnWaiting?.(boxId) === true) return later("not-responding");
     // Every guard before a stop: it closes the person's programs, and three failed probes can be this home's own outage.
     const fresh = await probe(cfg, boxId);
+    if (closed) return;
     if (fresh !== false) return clear(owner, boxId);
     if (!(await listWorks(cfg))) return unreachable(owner, boxId);
+    if (closed) return;
     const since = Math.min(health.notRespondingSince(boxId) ?? now(), restoringSince.get(boxId) ?? now());
     restoringSince.set(boxId, since);
     // The provider's command gateway can fail for every computer while its API still calls each one ready. Then a
@@ -524,6 +532,7 @@ export function createBoatRecovery(deps: BoatRecoveryDeps) {
       return unreachable(owner, boxId);
     }
     const box = await read(cfg, boxId);
+    if (closed) return;
     const state = box && typeof box === "object" ? (box as { state?: unknown }).state : undefined;
     // A state that could not be read is unknown, never a reason to restart.
     if (typeof state !== "string" || !READY.has(state)) return now() - since < DEAD_COMPUTER.replaceAfterMs ? later("not-responding") : decide(owner, boxId);

@@ -31,7 +31,12 @@ function throughAdmin(fx: CloudSendFixture, device: string) {
 
 let laptop: CloudSendFixture, desk: CloudSendFixture;
 beforeAll(async () => {
-  [laptop, desk] = await Promise.all([launchCloudSendFixture({ onePasswordToken: TOKEN }), launchCloudSendFixture({ onePasswordToken: TOKEN })]);
+  // Each fixture discovers two unreserved local ports while booting. Starting both
+  // at once can pair one fixture against the other's briefly reused port and
+  // produce an invalid_signature rather than exercising the session limits.
+  // Both independent computers remain live concurrently for the actual test.
+  laptop = await launchCloudSendFixture({ onePasswordToken: TOKEN });
+  desk = await launchCloudSendFixture({ onePasswordToken: TOKEN });
   throughAdmin(laptop, "laptop");
   throughAdmin(desk, "desk");
 }, hostTimeout(180_000));
