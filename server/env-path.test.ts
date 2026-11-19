@@ -282,10 +282,13 @@ describe("augmentedPath", () => {
 
       augmentedPath();
       await vi.waitFor(() => expect(augmentedPath().split(delimiter)).toContain(rcOnlyBin));
-      // 141 = 128 + SIGPIPE: the job's write hit a pipe nobody reads any more (0 would mean it was all read).
-      await vi.waitFor(() => expect(existsSync(jobStatus) && readFileSync(jobStatus, "utf8").trim()).toBe("141"), {
-        timeout: 5000,
-      });
+      // A closed pipe makes GNU head exit 1 (EPIPE) on some runners, while a shell
+      // can report 141 (128 + SIGPIPE) when its writer dies from the signal.
+      // Both prove the late background output was not consumed; exit 0 does not.
+      await vi.waitFor(() => {
+        const status = existsSync(jobStatus) ? readFileSync(jobStatus, "utf8").trim() : "";
+        expect(["1", "141"]).toContain(status);
+      }, { timeout: 5000 });
       expect(augmentedPath().split(delimiter)).toContain(rcOnlyBin);
     } finally {
       if (saved.SHELL === undefined) delete process.env.SHELL;
