@@ -78,7 +78,11 @@ describe("messages-db check", () => {
     const db = new DatabaseSync(join(data, "messages.db"));
     db.exec("CREATE TABLE messages (id TEXT, text TEXT); CREATE INDEX by_text ON messages (text)");
     const insert = db.prepare("INSERT INTO messages VALUES (?, ?)");
+    // A single fixture transaction avoids hundreds of synchronous disk commits
+    // on slower Windows CI runners without changing the resulting database.
+    db.exec("BEGIN");
     for (let n = 0; n < 500; n += 1) insert.run(String(n), `${"y".repeat(200)}${n}`);
+    db.exec("COMMIT");
     db.close();
     // Overwrite part of a page in the middle: the header still reads, the tree does not.
     const bytes = readFileSync(join(data, "messages.db"));
