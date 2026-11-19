@@ -8,12 +8,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { DecisionRow } from "./decision-log.ts";
 import { removeTempDir, waitForExit } from "./testing/cleanup.ts";
-import { workerPort } from "./testing/worker-port.ts";
+import { freePortBlock } from "./testing/ports.ts";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLI = join(SERVER_DIR, "testing", "fake-acp-cli.ts");
-const PORT = workerPort(28800, 10_000);
-const BASE = `http://127.0.0.1:${PORT}`;
+let port = 0;
+let base = "";
 const posixOnly = describe.skipIf(process.platform === "win32");
 const UNDELIVERED = "Couldn't deliver that answer";
 
@@ -22,7 +22,7 @@ let home: string;
 let log = "";
 
 const api = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> => {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${base}${path}`, {
     method,
     headers: body ? { "content-type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
@@ -36,7 +36,7 @@ async function start() {
     env: {
       ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
       ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-      HOME: home, USERPROFILE: home, OMB_PORT: String(PORT), OMB_WEBHOOK_PORT: String(PORT + 1),
+      HOME: home, USERPROFILE: home, OMB_PORT: String(port), OMB_WEBHOOK_PORT: String(port + 1),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -45,7 +45,7 @@ async function start() {
   const deadline = Date.now() + 20_000;
   for (;;) {
     try {
-      if ((await fetch(`${BASE}/api/health`)).ok) return;
+      if ((await fetch(`${base}/api/health`)).ok) return;
     } catch {
     }
     if (Date.now() > deadline) throw new Error(`server never came up:\n${log}`);
@@ -79,6 +79,8 @@ const userDecisionsFor = async (requestId: string) => {
 posixOnly("a replayed respond for a settled card", () => {
   beforeAll(async () => {
     chmodSync(FAKE_CLI, 0o755);
+    port = await freePortBlock([0, 1], 28800, 10_000);
+    base = `http://127.0.0.1:${port}`;
     home = mkdtempSync(join(tmpdir(), "omb-respond-replay-"));
     const data = join(home, ".openmausbot");
     mkdirSync(data, { recursive: true });
