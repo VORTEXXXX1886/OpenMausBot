@@ -32,14 +32,23 @@ if (expectedVersion !== release.version) {
   );
 }
 
-async function binaryVersion(candidate) {
-  if (!candidate || !existsSync(candidate)) return null;
+async function binaryVersionProbe(candidate) {
+  if (!candidate || !existsSync(candidate)) return { version: null, diagnostic: "executable not found" };
   try {
-    const { stdout } = await run(candidate, ["--version"], { timeout: 5000, windowsHide: true });
-    return stdout.match(/cua-driver\s+([\d.]+)/)?.[1] ?? null;
-  } catch {
-    return null;
+    const { stdout, stderr } = await run(candidate, ["--version"], { timeout: 5000, windowsHide: true });
+    // Some CLI builds print version information to stderr, or use the cua-driver-rs name.
+    // Still require the exact pinned SDK version; never accept an unknown executable.
+    const output = `${stdout}\n${stderr}`;
+    const version = output.match(/\bcua-driver(?:-rs)?\s+v?(\d+\.\d+\.\d+)\b/i)?.[1] ?? null;
+    return { version, diagnostic: version ? null : `unrecognized version output (stdout=${JSON.stringify(stdout.slice(0, 300))}, stderr=${JSON.stringify(stderr.slice(0, 300))})` };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { version: null, diagnostic: `version command failed: ${detail.slice(0, 500)}` };
   }
+}
+
+async function binaryVersion(candidate) {
+  return (await binaryVersionProbe(candidate)).version;
 }
 
 async function officialBinary() {
@@ -69,8 +78,9 @@ async function officialBinary() {
     timeout: 60_000,
     windowsHide: true,
   });
-  if ((await binaryVersion(cachedBinary)) !== expectedVersion) {
-    throw new Error(`downloaded CUA Driver does not report version ${expectedVersion}`);
+  const probe = await binaryVersionProbe(cachedBinary);
+  if (probe.version !== expectedVersion) {
+    throw new Error(`downloaded CUA Driver does not report version ${expectedVersion}: ${probe.diagnostic ?? `reported ${probe.version}`}`);
   }
   return cachedBinary;
 }
