@@ -63,6 +63,17 @@ jobs:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
           fetch-depth: 0
+      # A fork inherits the upstream auto-update feed and the upstream legacy mirror.
+      # Never assemble or publish a fork release until its owner, update feed,
+      # signing credentials and mirror policy have been intentionally migrated.
+      - name: Refuse releases from an unconfigured fork
+        env:
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ "$RELEASE_REPOSITORY" != "milind-soni/OpenMausBot" ]; then
+            echo "::error::Release workflow still targets upstream updater and signing infrastructure. Configure electron-builder.yml, update metadata checks, signing and legacy-mirror policy for $RELEASE_REPOSITORY before publishing a fork release."
+            exit 1
+          fi
       - id: pin
         env:
           BEFORE: ${{ github.event.before }}
